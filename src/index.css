@@ -1,0 +1,14 @@
+/* 確保 antd 樣式有被載入 */
+/* @import 'antd/dist/reset.css'; */
+
+/* 引入 Tailwind CSS 的基本層級 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 讓 body 填滿高度 */
+html,
+body,
+#root {
+  height: 100%;
+}
