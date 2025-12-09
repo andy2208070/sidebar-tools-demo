@@ -115,21 +115,54 @@ export const useModelStore = create<Store>((set, get) => ({
 
   selectLight: (id) => set({ selectedLightId: id }),
 
+  // updateLight: (id, updates) =>
+  //   set((state) => ({
+  //     lights: state.lights.map((l) =>
+  //       l.id === id
+  //         ? {
+  //             ...l,
+  //             ...updates,
+  //             lightObj: Object.assign(l.lightObj, updates),
+  //             position: updates.position || l.position,
+  //             color: updates.color || l.color,
+  //             intensity: updates.intensity ?? l.intensity,
+  //           }
+  //         : l
+  //     ),
+  //   })),
   updateLight: (id, updates) =>
-    set((state) => ({
-      lights: state.lights.map((l) =>
-        l.id === id
-          ? {
-              ...l,
-              ...updates,
-              lightObj: Object.assign(l.lightObj, updates),
-              position: updates.position || l.position,
-              color: updates.color || l.color,
-              intensity: updates.intensity ?? l.intensity,
-            }
-          : l
-      ),
-    })),
+  set((state) => ({
+    lights: state.lights.map((l) => {
+      if (l.id !== id) return l;
+
+      // 同步到真正的 Three.js light 物件
+      const lightObj = l.lightObj;
+      if (updates.color !== undefined) lightObj.color.set(updates.color);
+      if (updates.intensity !== undefined) lightObj.intensity = updates.intensity;
+      if (updates.position) lightObj.position.set(...updates.position);
+      if (updates.distance !== undefined) (lightObj as any).distance = updates.distance;
+      if (updates.decay !== undefined) (lightObj as any).decay = updates.decay;
+      if (updates.angle !== undefined) (lightObj as THREE.SpotLight).angle = updates.angle;
+      if (updates.penumbra !== undefined) (lightObj as THREE.SpotLight).penumbra = updates.penumbra;
+
+      // 更新 helper（如果有的話）
+      if (l.helper) {
+        if (l.helper instanceof THREE.DirectionalLightHelper) {
+          (l.helper as THREE.DirectionalLightHelper).update();
+        } else if (l.helper instanceof THREE.PointLightHelper) {
+          (l.helper as THREE.PointLightHelper).update();
+        } else if (l.helper instanceof THREE.SpotLightHelper) {
+          (l.helper as THREE.SpotLightHelper).update();
+        }
+      }
+
+      return {
+        ...l,
+        ...updates,
+        position: updates.position || l.position,
+      };
+    }),
+  })),
 }));
 
 // 一進頁面自動加一盞主燈

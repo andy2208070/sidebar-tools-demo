@@ -57,6 +57,18 @@ export default function ModelUploadPage() {
           group.scale.multiplyScalar(scale);
           group.position.sub(center.multiplyScalar(scale));
 
+          // 上傳成功後強制刷新材質
+          group.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              const mesh = child as THREE.Mesh;
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              // 強制使用標準材質
+              if (mesh.material) {
+                (mesh.material as THREE.Material).needsUpdate = true;
+              }
+            }
+          });
           addModel(file.name.replace(/\.(glb|gltf)$/i, ''), group);
           message.success(`${file.name} 上傳成功`);
         } catch (err) {

@@ -62,7 +62,8 @@ export default function ThreeScene() {
       <Canvas
         shadows
         camera={{ position: [10, 10, 10], fov: 45 }}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, preserveDrawingBuffer: true }}
+        frameloop="demand" // 選用：省電又穩
         onCreated={({ gl }) => gl.setClearColor('#1a1a1a')}
       >
         <SceneContent />
