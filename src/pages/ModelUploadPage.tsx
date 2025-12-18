@@ -1,5 +1,5 @@
 // src/pages/ModelUploadPage.tsx
-import { useRef, useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Upload, message, Alert } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -7,7 +7,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import * as THREE from 'three';
 import ThreeScene from '@/components/ThreeScene';
 import LayerPanel from '@/components/LayerPanel';
-import LightControlPanel from '@/components/LightControlPanel';
+import DetailPanel from '@/components/DetailPanel';
 import { useModelStore } from '@/store/modelStore';
 
 const { Dragger } = Upload;
@@ -15,25 +15,17 @@ const { Dragger } = Upload;
 export default function ModelUploadPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const addModel = useModelStore((s) => s.addModel);
-
-  useEffect(() => {
-    return () => {
-      // 離開頁面時清理所有模型（避免記憶體洩漏）
-      // 可選：如果你想保留模型跨頁面，可以不清理
-    };
-  }, []);
+  const addLayer = useModelStore((s) => s.addLayer);
 
   const handleFile = (file: File) => {
     setLoading(true);
     setError(null);
+
     const url = URL.createObjectURL(file);
 
     const loader = new GLTFLoader();
     const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath(
-      'https://www.gstatic.com/draco/versioned/decoders/1.5.7/'
-    );
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
     loader.setDRACOLoader(dracoLoader);
 
     loader.load(
@@ -49,6 +41,7 @@ export default function ModelUploadPage() {
           });
           group.add(gltf.scene);
 
+          // 自動置中 + 縮放
           const box = new THREE.Box3().setFromObject(group);
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
@@ -57,7 +50,15 @@ export default function ModelUploadPage() {
           group.scale.multiplyScalar(scale);
           group.position.sub(center.multiplyScalar(scale));
 
-          addModel(file.name.replace(/\.(glb|gltf)$/i, ''), group);
+          // 加入到圖層系統
+          addLayer({
+            id: crypto.randomUUID(),
+            name: file.name.replace(/\.(glb|gltf)$/i, ''),
+            type: 'model',
+            visible: true,
+            object: group,
+          });
+
           message.success(`${file.name} 上傳成功`);
         } catch (err) {
           console.error(err);
@@ -76,7 +77,7 @@ export default function ModelUploadPage() {
     );
 
     URL.revokeObjectURL(url);
-    return false;
+    return false; // 阻止 antd 自動上傳
   };
 
   const draggerProps = {
@@ -106,6 +107,7 @@ export default function ModelUploadPage() {
 
       {/* 右側面板 */}
       <div className="tl--w-96 tl--bg-gray-100 tl--p-6 tl--overflow-y-auto tl--space-y-6">
+        {/* 上傳區 */}
         <div className="tl--bg-white tl--rounded-xl tl--shadow-lg tl--p-8">
           <Dragger {...draggerProps} disabled={loading}>
             <p className="ant-upload-drag-icon">
@@ -115,19 +117,16 @@ export default function ModelUploadPage() {
               點擊或拖曳 3D 模型到此區域
             </p>
             <p className="ant-upload-hint tl--text-sm tl--text-gray-500">
-              支援 .glb、.gltf 格式（可多檔）
+              支援 .glb、.gltf 格式（可多檔同時上傳）
             </p>
           </Dragger>
         </div>
 
-        <LightControlPanel />
+        {/* 統一圖層管理（燈光 + 模型） */}
+        <LayerPanel />
 
-        <div className="tl--bg-white tl--rounded-xl tl--shadow-lg tl--p-6">
-          <h3 className="tl--text-xl tl--font-bold tl--mb-4 tl--text-gray-800">
-            模型圖層
-          </h3>
-          <LayerPanel />
-        </div>
+        {/* 選中物件的詳細控制面板 */}
+        <DetailPanel />
       </div>
     </div>
   );

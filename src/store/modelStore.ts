@@ -2,135 +2,147 @@
 import { create } from 'zustand';
 import * as THREE from 'three';
 
-export type ModelLayer = {
+export type LayerType = 'model' | 'light';
+
+export type LayerItem = {
   id: string;
   name: string;
-  object: THREE.Group;
+  type: LayerType;
   visible: boolean;
-};
+  object: THREE.Object3D;
 
-export type LightType = 'directional' | 'point' | 'spot';
-
-export type LightItem = {
-  id: string;
-  name: string;
-  type: LightType;
-  color: string;
-  intensity: number;
-  position: [number, number, number];
-  // 以下僅 point / spot 使用
-  distance?: number;
-  decay?: number;
-  angle?: number;     // spot only
-  penumbra?: number;  // spot only
-  // Three.js 物件
-  lightObj: THREE.Light;
-  helper?: THREE.Object3D; // 燈光輔助線（可見位置）
+  // 燈光專屬（一定要存回 store 才能雙向綁定！）
+  lightType?: 'directional' | 'point' | 'spot';
+  color?: string;       // ← 一定要有
+  intensity?: number;   // ← 一定要有
+  helper?: THREE.Object3D;
 };
 
 type Store = {
-  models: ModelLayer[];
-  lights: LightItem[];
-  selectedLightId: string | null;
+  layers: LayerItem[];
+  selectedLayerId: string | null;
 
-  // 模型相關
-  addModel: (name: string, object: THREE.Group) => void;
-  toggleModelVisible: (id: string) => void;
-  removeModel: (id: string) => void;
+  addLayer: (item: LayerItem) => void;
+  removeLayer: (id: string) => void;
+  toggleVisible: (id: string) => void;
+  selectLayer: (id: string | null) => void;
 
-  // 燈光相關
-  addLight: (type: LightType) => void;
-  removeLight: (id: string) => void;
-  selectLight: (id: string | null) => void;
-  updateLight: (id: string, updates: Partial<LightItem>) => void;
+  addLight: (lightType: 'directional' | 'point' | 'spot') => void;
+
+  updateLayer: (id: string, updates: {
+    position?: [number, number, number];
+    rotation?: [number, number, number];
+    scale?: number;
+    intensity?: number;
+    color?: string;
+    visible?: boolean;
+    name?: string;        // 新增：支援更名
+  }) => void;
+
+  reorderLayers: (newOrder: LayerItem[]) => void; // 新增：支援拖曳排序
 };
 
 export const useModelStore = create<Store>((set, get) => ({
-  models: [],
-  lights: [],
-  selectedLightId: null,
+  layers: [],
+  selectedLayerId: null,
 
-  addModel: (name, object) =>
+  addLayer: (item) =>
     set((state) => ({
-      models: [...state.models, { id: crypto.randomUUID(), name, object, visible: true }],
+      layers: [...state.layers, item],
+      selectedLayerId: item.id,
     })),
 
-  toggleModelVisible: (id) =>
+  reorderLayers: (newOrder) => set({ layers: newOrder }),
+  removeLayer: (id) =>
     set((state) => ({
-      models: state.models.map((m) =>
-        m.id === id ? { ...m, visible: !m.visible } : m
-      ),
+      layers: state.layers.filter((l) => l.id !== id),
+      selectedLayerId: state.selectedLayerId === id ? null : state.selectedLayerId,
     })),
 
-  removeModel: (id) =>
+  toggleVisible: (id) =>
     set((state) => ({
-      models: state.models.filter((m) => m.id !== id),
-    })),
-
-  addLight: (type) => {
-    const id = crypto.randomUUID();
-    let light: THREE.Light;
-    let helper: THREE.Object3D | undefined;
-
-    if (type === 'directional') {
-      light = new THREE.DirectionalLight('#ffffff', 3);
-      light.position.set(5, 10, 7.5);
-      helper = new THREE.DirectionalLightHelper(light as THREE.DirectionalLight, 2, '#ffff00');
-    } else if (type === 'point') {
-      light = new THREE.PointLight('#ffffff', 5, 20, 2);
-      light.position.set(0, 5, 0);
-      helper = new THREE.PointLightHelper(light as THREE.PointLight, 1, '#ffff00');
-    } else {
-      light = new THREE.SpotLight('#ffffff', 8, 30, Math.PI / 6, 0.3);
-      light.position.set(0, 10, 0);
-      helper = new THREE.SpotLightHelper(light as THREE.SpotLight);
-    }
-
-    const newLight: LightItem = {
-      id,
-      name: `${type === 'directional' ? '主燈光' : type === 'point' ? '點光源' : '聚光燈'} ${get().lights.length + 1}`,
-      type,
-      color: '#ffffff',
-      intensity: light.intensity,
-      position: light.position.toArray() as [number, number, number],
-      distance: (light as any).distance,
-      decay: (light as any).decay,
-      angle: (light as any).angle,
-      penumbra: (light as any).penumbra,
-      lightObj: light,
-      helper,
-    };
-
-    set((state) => ({
-      lights: [...state.lights, newLight],
-      selectedLightId: id, // 新增自動選取
-    }));
-  },
-
-  removeLight: (id) =>
-    set((state) => ({
-      lights: state.lights.filter((l) => l.id !== id),
-      selectedLightId: state.selectedLightId === id ? null : state.selectedLightId,
-    })),
-
-  selectLight: (id) => set({ selectedLightId: id }),
-
-  updateLight: (id, updates) =>
-    set((state) => ({
-      lights: state.lights.map((l) =>
+      layers: state.layers.map((l) =>
         l.id === id
           ? {
               ...l,
-              ...updates,
-              lightObj: Object.assign(l.lightObj, updates),
-              position: updates.position || l.position,
-              color: updates.color || l.color,
-              intensity: updates.intensity ?? l.intensity,
+              visible: !l.visible,
+              object: Object.assign(l.object, { visible: !l.visible }),
             }
           : l
       ),
     })),
+
+  selectLayer: (id) => set({ selectedLayerId: id }),
+
+  updateLayer: (id, updates) =>
+    set((state) => ({
+      layers: state.layers.map((l) => {
+        if (l.id !== id) return l;
+
+      if (updates.position) l.object.position.set(...updates.position);
+      if (updates.rotation) l.object.rotation.set(...updates.rotation);
+      if (updates.scale !== undefined) l.object.scale.setScalar(updates.scale);
+      if (updates.intensity !== undefined && l.type === 'light') {
+        (l.object as THREE.Light).intensity = updates.intensity;
+      }
+      if (updates.color && l.type === 'light') {
+        (l.object as THREE.Light).color.set(updates.color);
+      }
+      if (updates.visible !== undefined) {
+        l.object.visible = updates.visible;
+        if (l.helper) l.helper.visible = updates.visible;
+      }
+      if (updates.name) l.name = updates.name; // 支援更名
+
+      if (l.helper) (l.helper as any).update?.();
+
+      return {
+        ...l,
+        color: updates.color ?? (l.type === 'light' ? (l.object as THREE.Light).color.getHexString() : l.color),
+        intensity: updates.intensity ?? (l.type === 'light' ? (l.object as THREE.Light).intensity : l.intensity),
+        name: updates.name ?? l.name,
+      };
+      }),
+    })),
+
+  addLight: (lightType) => {
+    const id = crypto.randomUUID();
+    let light: THREE.Light;
+    let helper: THREE.Object3D | undefined;
+
+    switch (lightType) {
+      case 'directional':
+        light = new THREE.DirectionalLight('#ffffff', 3);
+        light.position.set(5, 10, 7.5);
+        helper = new THREE.DirectionalLightHelper(light as THREE.DirectionalLight, 2);
+        break;
+      case 'point':
+        light = new THREE.PointLight('#ffffff', 5, 20, 2);
+        light.position.set(0, 5, 0);
+        helper = new THREE.PointLightHelper(light as THREE.PointLight, 1);
+        break;
+      case 'spot':
+        light = new THREE.SpotLight('#ffffff', 8, 30, Math.PI / 6, 0.3);
+        light.position.set(0, 10, 0);
+        helper = new THREE.SpotLightHelper(light as THREE.SpotLight);
+        break;
+    }
+
+    const item: LayerItem = {
+      id,
+      name: `${lightType === 'directional' ? '主燈光' : lightType === 'point' ? '點光源' : '聚光燈'} ${get().layers.filter(l => l.type === 'light').length + 1}`,
+      type: 'light',
+      visible: true,
+      object: light,
+      lightType,
+      color: '#ffffff',
+      intensity: light.intensity,
+      helper,
+    };
+
+    get().addLayer(item);
+  },
 }));
 
-// 一進頁面自動加一盞主燈
+// 頁面載入時自動加一盞主燈
 useModelStore.getState().addLight('directional');
